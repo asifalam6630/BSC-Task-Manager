@@ -1,0 +1,640 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated user account profile, role-based access settings, and notification preferences.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "maxLength": 200 },
+        "displayName": { "type": "string", "maxLength": 120 },
+        "photoURL": { "type": "string", "maxLength": 500 },
+        "role": {
+          "type": "string",
+          "enum": [
+            "Super Admin",
+            "MD / Executive",
+            "ED / Project Sponsor",
+            "Project Manager",
+            "Department Head",
+            "Team Member",
+            "Viewer"
+          ]
+        },
+        "department": { "type": "string", "maxLength": 100 },
+        "designation": { "type": "string", "maxLength": 100 },
+        "theme": { "type": "string", "enum": ["light", "dark"] },
+        "reminderDays": { "type": "array", "description": "Days before due date to remind (max 4 items)" },
+        "emailAlerts": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "displayName", "role", "department", "designation", "theme", "createdAt", "updatedAt"]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Explicit admin registry document granting Super Admin privileges.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "maxLength": 200 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "createdAt"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Strategic project record with BSC alignment, schedule, milestones, budget, and color code.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "projectCode": { "type": "string", "maxLength": 32 },
+        "name": { "type": "string", "maxLength": 180 },
+        "category": { "type": "string", "maxLength": 100 },
+        "strategicObjective": { "type": "string", "maxLength": 400 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "projectOwner": { "type": "string", "maxLength": 120 },
+        "projectChampion": { "type": "string", "maxLength": 120 },
+        "department": { "type": "string", "maxLength": 100 },
+        "startDate": { "type": "string", "maxLength": 20 },
+        "targetDate": { "type": "string", "maxLength": 20 },
+        "priority": { "type": "string", "enum": ["Critical", "High", "Medium", "Low"] },
+        "status": {
+          "type": "string",
+          "enum": ["Not Started", "Planning", "In Progress", "At Risk", "Delayed", "On Hold", "Completed", "Cancelled"]
+        },
+        "budget": { "type": "number" },
+        "color": { "type": "string", "maxLength": 20 },
+        "milestones": { "type": "array", "description": "Up to 25 milestone objects" },
+        "documents": { "type": "array", "description": "Up to 25 document metadata references" },
+        "isDemo": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId", "projectCode", "name", "category", "strategicObjective", "description",
+        "projectOwner", "projectChampion", "department", "startDate", "targetDate",
+        "priority", "status", "color", "isDemo", "createdAt", "updatedAt"
+      ]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Project task or subtask with RACI assignees, weighted completion, dependencies, and Google Calendar sync metadata.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "taskCode": { "type": "string", "maxLength": 32 },
+        "projectId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "projectCode": { "type": "string", "maxLength": 32 },
+        "parentTaskId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "responsible": { "type": "string", "maxLength": 120 },
+        "accountable": { "type": "string", "maxLength": 120 },
+        "consulted": { "type": "array", "description": "Up to 10 consulted names" },
+        "informed": { "type": "array", "description": "Up to 10 informed names" },
+        "department": { "type": "string", "maxLength": 100 },
+        "plannedStart": { "type": "string", "maxLength": 20 },
+        "plannedEnd": { "type": "string", "maxLength": 20 },
+        "actualStart": { "type": "string", "maxLength": 20 },
+        "actualEnd": { "type": "string", "maxLength": 20 },
+        "estimatedDays": { "type": "number" },
+        "weight": { "type": "number" },
+        "priority": { "type": "string", "enum": ["Critical", "High", "Medium", "Low"] },
+        "status": {
+          "type": "string",
+          "enum": ["Not Started", "In Progress", "Pending Approval", "Under Review", "Completed", "Delayed", "On Hold"]
+        },
+        "progress": { "type": "number" },
+        "dependencies": { "type": "array", "description": "Up to 10 task IDs" },
+        "remarks": { "type": "string", "maxLength": 1000 },
+        "attachments": { "type": "array", "description": "Up to 10 attachment names or URLs" },
+        "googleEventId": { "type": "string", "maxLength": 200 },
+        "syncStatus": { "type": "string", "enum": ["not_synced", "synced", "pending", "error"] },
+        "lastSyncedAt": { "type": "string", "maxLength": 40 },
+        "isDemo": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId", "taskCode", "projectId", "projectCode", "name", "description",
+        "responsible", "accountable", "department", "plannedStart", "plannedEnd",
+        "estimatedDays", "weight", "priority", "status", "progress", "syncStatus",
+        "isDemo", "createdAt", "updatedAt"
+      ]
+    },
+    "TaskActivity": {
+      "title": "TaskActivity",
+      "description": "Task comment or audit trail event stored under a task.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "authorName": { "type": "string", "maxLength": 120 },
+        "type": { "type": "string", "enum": ["comment", "status_change", "progress_update", "sync"] },
+        "message": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "authorName", "type", "message", "createdAt"]
+    },
+    "Meeting": {
+      "title": "Meeting",
+      "description": "Project governance meeting with agenda, minutes, action points, and Google Calendar sync metadata.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "meetingCode": { "type": "string", "maxLength": 32 },
+        "title": { "type": "string", "maxLength": 200 },
+        "projectId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "projectCode": { "type": "string", "maxLength": 32 },
+        "category": {
+          "type": "string",
+          "enum": [
+            "BOD Meeting",
+            "Steering Committee Meeting",
+            "Project Review Meeting",
+            "Departmental Meeting",
+            "Progress Review Meeting",
+            "Follow-up Meeting",
+            "Monthly Project Review",
+            "Quarterly BSC Review",
+            "Half-Year Business Plan Review",
+            "Yearly BSC Review",
+            "Project Steering Committee",
+            "Departmental Follow-up Meeting"
+          ]
+        },
+        "date": { "type": "string", "maxLength": 20 },
+        "startTime": { "type": "string", "maxLength": 10 },
+        "endTime": { "type": "string", "maxLength": 10 },
+        "venue": { "type": "string", "maxLength": 300 },
+        "chairperson": { "type": "string", "maxLength": 120 },
+        "participants": { "type": "array", "description": "Up to 25 participant names" },
+        "agenda": { "type": "string", "maxLength": 2000 },
+        "minutes": { "type": "string", "maxLength": 4000 },
+        "actionPoints": { "type": "array", "description": "Up to 30 action point objects" },
+        "googleEventId": { "type": "string", "maxLength": 200 },
+        "syncStatus": { "type": "string", "enum": ["not_synced", "synced", "pending", "error"] },
+        "lastSyncedAt": { "type": "string", "maxLength": 40 },
+        "isDemo": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId", "meetingCode", "title", "projectId", "projectCode", "category",
+        "date", "startTime", "endTime", "venue", "chairperson", "agenda", "minutes",
+        "syncStatus", "isDemo", "createdAt", "updatedAt"
+      ]
+    },
+    "RaciEntry": {
+      "title": "RaciEntry",
+      "description": "Spreadsheet-style RACI responsibility matrix row mapped to a project.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "projectId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "projectCode": { "type": "string", "maxLength": 32 },
+        "activity": { "type": "string", "maxLength": 200 },
+        "department": { "type": "string", "maxLength": 100 },
+        "roles": { "type": "object", "description": "Map of role/department column key to R, A, C, I, or empty string" },
+        "isDemo": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "projectId", "projectCode", "activity", "department", "roles", "isDemo", "createdAt", "updatedAt"]
+    },
+    "Employee": {
+      "title": "Employee",
+      "description": "Organization team directory entry used for task assignment, RACI mapping, and workload analytics.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "employeeCode": { "type": "string", "maxLength": 32 },
+        "name": { "type": "string", "maxLength": 120 },
+        "designation": { "type": "string", "maxLength": 120 },
+        "department": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "format": "email", "maxLength": 200 },
+        "reportingManager": { "type": "string", "maxLength": 120 },
+        "systemRole": {
+          "type": "string",
+          "enum": [
+            "Super Admin",
+            "MD / Executive",
+            "ED / Project Sponsor",
+            "Project Manager",
+            "Department Head",
+            "Team Member",
+            "Viewer"
+          ]
+        },
+        "isDemo": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId", "employeeCode", "name", "designation", "department",
+        "email", "reportingManager", "systemRole", "isDemo", "createdAt", "updatedAt"
+      ]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "In-app alert and deadline reminder for tasks, milestones, meetings, and approvals.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "type": {
+          "type": "string",
+          "enum": ["deadline", "overdue", "assignment", "meeting", "delay", "milestone", "approval", "raci", "escalation", "followup"]
+        },
+        "title": { "type": "string", "maxLength": 160 },
+        "message": { "type": "string", "maxLength": 500 },
+        "relatedEntityId": { "type": "string", "maxLength": 128 },
+        "relatedEntityType": { "type": "string", "enum": ["project", "task", "meeting", "raci", "charter", "bscTask", "dateChange"] },
+        "severity": { "type": "string", "enum": ["info", "warning", "critical", "success"] },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "type", "title", "message", "severity", "read", "createdAt"]
+    },
+    "BscKra": {
+      "title": "BscKra",
+      "description": "Turag BSC Master KRA linked to one of 5 Perspectives and a Strategic Objective (SO).",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "refCode": { "type": "string", "maxLength": 32 },
+        "perspective": {
+          "type": "string",
+          "enum": ["Financial", "Customer", "Internal Business Processes", "Learning & Growth", "ESG"]
+        },
+        "soCode": { "type": "string", "maxLength": 32 },
+        "soTitle": { "type": "string", "maxLength": 240 },
+        "title": { "type": "string", "maxLength": 240 },
+        "unit": { "type": "string", "maxLength": 40 },
+        "dataOwner": { "type": "string", "maxLength": 120 },
+        "targetValue": { "type": "string", "maxLength": 80 },
+        "currentValue": { "type": "string", "maxLength": 80 },
+        "completionStatus": { "type": "boolean" },
+        "confirmedBy": { "type": "string", "maxLength": 120 },
+        "confirmedAt": { "type": "string", "maxLength": 40 },
+        "isDemo": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId", "refCode", "perspective", "soCode", "soTitle", "title",
+        "unit", "dataOwner", "completionStatus", "isDemo", "createdAt", "updatedAt"
+      ]
+    },
+    "ProjectCharter": {
+      "title": "ProjectCharter",
+      "description": "8-section Turag BSC Project Charter with approval status, Day-Range milestones, activities, and RACI team.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "charterCode": { "type": "string", "maxLength": 32 },
+        "projectCode": { "type": "string", "maxLength": 32 },
+        "projectId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "perspective": {
+          "type": "string",
+          "enum": ["Financial", "Customer", "Internal Business Processes", "Learning & Growth", "ESG"]
+        },
+        "soCode": { "type": "string", "maxLength": 32 },
+        "kraIds": { "type": "array", "description": "Up to 20 linked KRA document IDs" },
+        "status": { "type": "string", "enum": ["Draft", "Pending Approval", "Approved", "Signed-off", "Closed"] },
+        "businessNeed": { "type": "string", "maxLength": 2000 },
+        "scope": { "type": "string", "maxLength": 2000 },
+        "objectivesGoals": { "type": "string", "maxLength": 2000 },
+        "opportunity": { "type": "string", "maxLength": 2000 },
+        "deliverables": { "type": "string", "maxLength": 2000 },
+        "risksAssumptions": { "type": "string", "maxLength": 2000 },
+        "teamSignOff": { "type": "string", "maxLength": 1000 },
+        "projectLead": { "type": "string", "maxLength": 120 },
+        "projectManager": { "type": "string", "maxLength": 120 },
+        "projectHead": { "type": "string", "maxLength": 120 },
+        "projectSponsor": { "type": "string", "maxLength": 120 },
+        "startDate": { "type": "string", "maxLength": 20 },
+        "targetDate": { "type": "string", "maxLength": 20 },
+        "milestones": { "type": "array", "description": "Up to 25 charter milestone objects with activities" },
+        "charterRevision": { "type": "number" },
+        "closureNote": { "type": "string", "maxLength": 2000 },
+        "isDemo": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId", "charterCode", "projectCode", "title", "perspective", "soCode",
+        "status", "projectLead", "projectManager", "projectHead", "projectSponsor",
+        "startDate", "targetDate", "charterRevision", "isDemo", "createdAt", "updatedAt"
+      ]
+    },
+    "BscTask": {
+      "title": "BscTask",
+      "description": "Turag BSC governed task with locked baselines, RACI, Day-Range bucket, workflow lifecycle, and KRA roll-up.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "taskCode": { "type": "string", "maxLength": 48 },
+        "projectId": { "type": "string", "maxLength": 128 },
+        "charterId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "charterCode": { "type": "string", "maxLength": 32 },
+        "milestoneId": { "type": "string", "maxLength": 128 },
+        "milestoneNumber": { "type": "number" },
+        "kraIds": { "type": "array", "description": "Up to 15 linked KRA IDs" },
+        "phase": {
+          "type": "string",
+          "enum": ["Initialize", "Define", "Baseline", "Targets", "Improvement Drives", "Review", "Close to Deploy"]
+        },
+        "title": { "type": "string", "maxLength": 220 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "deliverableEvidence": { "type": "string", "maxLength": 400 },
+        "responsibleId": { "type": "string", "maxLength": 128 },
+        "responsibleName": { "type": "string", "maxLength": 120 },
+        "accountableId": { "type": "string", "maxLength": 128 },
+        "accountableName": { "type": "string", "maxLength": 120 },
+        "consultedIds": { "type": "array", "description": "Up to 10 consulted names/IDs" },
+        "informedIds": { "type": "array", "description": "Up to 10 informed names/IDs" },
+        "priority": { "type": "string", "enum": ["Critical", "High", "Medium", "Low"] },
+        "baselineStart": { "type": "string", "maxLength": 20 },
+        "baselineEnd": { "type": "string", "maxLength": 20 },
+        "baselineLocked": { "type": "boolean" },
+        "plannedStart": { "type": "string", "maxLength": 20 },
+        "plannedEnd": { "type": "string", "maxLength": 20 },
+        "actualStart": { "type": "string", "maxLength": 20 },
+        "actualEnd": { "type": "string", "maxLength": 20 },
+        "dayRangeBucket": {
+          "type": "string",
+          "enum": ["15 Days", "30 Days", "45 Days", "60 Days", "90 Days", "180 Days", "365 Days", "New FY"]
+        },
+        "weight": { "type": "number" },
+        "predecessorIds": { "type": "array", "description": "Up to 10 predecessor task IDs" },
+        "status": {
+          "type": "string",
+          "enum": [
+            "Draft", "Assigned", "Query Raised", "Accepted", "In Progress",
+            "Submitted for Review", "Returned", "Completed", "On Hold", "Blocked", "Cancelled"
+          ]
+        },
+        "percentComplete": { "type": "number" },
+        "followUpFrequency": { "type": "string", "enum": ["Daily", "Weekly", "Bi-weekly", "Monthly"] },
+        "nextFollowUpDate": { "type": "string", "maxLength": 20 },
+        "assignedAt": { "type": "string", "maxLength": 40 },
+        "submittedAt": { "type": "string", "maxLength": 40 },
+        "approvedAt": { "type": "string", "maxLength": 40 },
+        "blockedSince": { "type": "string", "maxLength": 20 },
+        "statusReason": { "type": "string", "maxLength": 1000 },
+        "charterChangedFlag": { "type": "boolean" },
+        "attachments": { "type": "array", "description": "Up to 15 evidence attachment objects or filenames" },
+        "sourceActionItemId": { "type": "string", "maxLength": 128 },
+        "parentTaskId": { "type": "string", "maxLength": 128 },
+        "department": { "type": "string", "maxLength": 100 },
+        "googleEventId": { "type": "string", "maxLength": 200 },
+        "syncStatus": { "type": "string", "enum": ["not_synced", "synced", "pending", "error"] },
+        "lastSyncedAt": { "type": "string", "maxLength": 40 },
+        "createdBy": { "type": "string", "maxLength": 120 },
+        "updatedBy": { "type": "string", "maxLength": 120 },
+        "isDemo": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId", "taskCode", "charterId", "charterCode", "milestoneId", "milestoneNumber",
+        "phase", "title", "description", "deliverableEvidence", "responsibleName", "accountableName",
+        "priority", "baselineStart", "baselineEnd", "baselineLocked", "plannedStart", "plannedEnd",
+        "dayRangeBucket", "weight", "status", "percentComplete", "followUpFrequency",
+        "nextFollowUpDate", "isDemo", "createdBy", "updatedBy", "createdAt", "updatedAt"
+      ]
+    },
+    "TaskFollowUp": {
+      "title": "TaskFollowUp",
+      "description": "Append-only follow-up audit log entry for a BSC Task (immutable after creation).",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "taskId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "taskCode": { "type": "string", "maxLength": 48 },
+        "charterId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 20 },
+        "updatedBy": { "type": "string", "maxLength": 120 },
+        "progressNote": { "type": "string", "maxLength": 2000 },
+        "percentBefore": { "type": "number" },
+        "percentAfter": { "type": "number" },
+        "statusBefore": { "type": "string", "maxLength": 40 },
+        "statusAfter": { "type": "string", "maxLength": 40 },
+        "issuesBlockers": { "type": "string", "maxLength": 1000 },
+        "supportNeededFrom": { "type": "string", "maxLength": 200 },
+        "nextAction": { "type": "string", "maxLength": 600 },
+        "nextFollowUpDate": { "type": "string", "maxLength": 20 },
+        "attachments": { "type": "array", "description": "Up to 10 attachment names" },
+        "type": {
+          "type": "string",
+          "enum": ["Owner Update", "PM Follow-up", "Review Comment", "Escalation", "System Reminder"]
+        },
+        "onTime": { "type": "boolean" },
+        "isDemo": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId", "taskId", "taskCode", "charterId", "date", "updatedBy", "progressNote",
+        "percentBefore", "percentAfter", "statusBefore", "statusAfter", "type", "onTime",
+        "isDemo", "createdAt"
+      ]
+    },
+    "DateChangeRequest": {
+      "title": "DateChangeRequest",
+      "description": "Governed due-date change request preserving locked baseline dates and enforcing A / ED approval.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "taskId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "taskCode": { "type": "string", "maxLength": 48 },
+        "charterId": { "type": "string", "maxLength": 128 },
+        "milestoneId": { "type": "string", "maxLength": 128 },
+        "oldEnd": { "type": "string", "maxLength": 20 },
+        "proposedEnd": { "type": "string", "maxLength": 20 },
+        "reason": { "type": "string", "maxLength": 1000 },
+        "impactOnMilestone": { "type": "boolean" },
+        "requestedBy": { "type": "string", "maxLength": 120 },
+        "approverA": { "type": "string", "maxLength": 120 },
+        "approverEd": { "type": "string", "maxLength": 120 },
+        "decisionA": { "type": "string", "enum": ["Pending", "Approved", "Rejected"] },
+        "decisionEd": { "type": "string", "enum": ["Not Required", "Pending", "Approved", "Rejected"] },
+        "decision": { "type": "string", "enum": ["Pending", "Approved", "Rejected"] },
+        "decisionDate": { "type": "string", "maxLength": 40 },
+        "comment": { "type": "string", "maxLength": 1000 },
+        "isDemo": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId", "taskId", "taskCode", "charterId", "milestoneId", "oldEnd", "proposedEnd",
+        "reason", "impactOnMilestone", "requestedBy", "approverA", "decisionA", "decisionEd",
+        "decision", "isDemo", "createdAt", "updatedAt"
+      ]
+    },
+    "ReviewMeeting": {
+      "title": "ReviewMeeting",
+      "description": "Monthly/Quarterly/Half-Year/Yearly BSC review, Steering Committee, and Departmental Follow-up meeting with minutes, decisions, calendar sync, and auto-converted action items.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "meetingCode": { "type": "string", "maxLength": 32 },
+        "projectId": { "type": "string", "maxLength": 128 },
+        "charterId": { "type": "string", "maxLength": 128 },
+        "perspective": {
+          "type": "string",
+          "enum": ["Financial", "Customer", "Internal Business Processes", "Learning & Growth", "ESG"]
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "Monthly Project Review",
+            "Quarterly BSC Review",
+            "Half-Year BP Review",
+            "Half-Year Business Plan Review",
+            "Yearly Review",
+            "Yearly BSC Review",
+            "Project Steering Committee",
+            "Departmental Follow-up Meeting"
+          ]
+        },
+        "title": { "type": "string", "maxLength": 200 },
+        "date": { "type": "string", "maxLength": 20 },
+        "startTime": { "type": "string", "maxLength": 10 },
+        "endTime": { "type": "string", "maxLength": 10 },
+        "venue": { "type": "string", "maxLength": 300 },
+        "chairperson": { "type": "string", "maxLength": 120 },
+        "attendees": { "type": "array", "description": "Up to 30 attendee names" },
+        "agenda": { "type": "string", "maxLength": 2000 },
+        "minutes": { "type": "string", "maxLength": 4000 },
+        "decisions": { "type": "string", "maxLength": 2000 },
+        "actionItems": { "type": "array", "description": "Up to 40 action item objects linked to tasks" },
+        "googleEventId": { "type": "string", "maxLength": 200 },
+        "syncStatus": { "type": "string", "enum": ["not_synced", "synced", "pending", "error"] },
+        "lastSyncedAt": { "type": "string", "maxLength": 40 },
+        "isDemo": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId", "type", "title", "date", "minutes", "decisions", "isDemo", "createdAt", "updatedAt"
+      ]
+    },
+    "CalendarSyncLog": {
+      "title": "CalendarSyncLog",
+      "description": "Append-only audit log of Google Calendar synchronization operations and errors.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "entityType": { "type": "string", "enum": ["task", "bscTask", "meeting", "reviewMeeting", "calendar"] },
+        "entityId": { "type": "string", "maxLength": 128 },
+        "entityCode": { "type": "string", "maxLength": 48 },
+        "googleEventId": { "type": "string", "maxLength": 200 },
+        "action": { "type": "string", "enum": ["create", "update", "cancel", "pull", "error"] },
+        "status": { "type": "string", "enum": ["success", "error"] },
+        "message": { "type": "string", "maxLength": 500 },
+        "actorName": { "type": "string", "maxLength": 120 },
+        "syncedAt": { "type": "string", "maxLength": 40 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId", "entityType", "entityId", "entityCode", "action",
+        "status", "message", "actorName", "syncedAt", "createdAt"
+      ]
+    },
+    "BscGovernanceConfig": {
+      "title": "BscGovernanceConfig",
+      "description": "Admin-configurable escalation thresholds, reminder schedules, daily digest time, and notification channel toggles.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "reminderDaysBeforeDue": { "type": "number" },
+        "escalationL1Days": { "type": "number" },
+        "escalationL2Days": { "type": "number" },
+        "escalationL3Days": { "type": "number" },
+        "escalationL4Days": { "type": "number" },
+        "blockedEscalationDays": { "type": "number" },
+        "followUpComplianceTarget": { "type": "number" },
+        "dailyDigestTime": { "type": "string", "maxLength": 10 },
+        "dailyDigestTimezone": { "type": "string", "maxLength": 50 },
+        "channels": { "type": "object", "description": "Map of channel toggles: inApp, email, whatsapp, sms" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId", "reminderDaysBeforeDue", "escalationL1Days", "escalationL2Days",
+        "escalationL3Days", "escalationL4Days", "blockedEscalationDays",
+        "followUpComplianceTarget", "dailyDigestTime", "dailyDigestTimezone", "channels", "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profile, role, and private preference settings isolated to owner or Super Admin."
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Explicit Super Admin registry."
+    },
+    "/projects/{projectId}": {
+      "schema": { "$ref": "#/entities/Project" },
+      "description": "Strategic projects owned by the authenticated user."
+    },
+    "/tasks/{taskId}": {
+      "schema": { "$ref": "#/entities/Task" },
+      "description": "Project tasks and subtasks linked to a verified parent project."
+    },
+    "/tasks/{taskId}/activity/{activityId}": {
+      "schema": { "$ref": "#/entities/TaskActivity" },
+      "description": "Task comments and audit log entries guarded by parent task Master Gate."
+    },
+    "/meetings/{meetingId}": {
+      "schema": { "$ref": "#/entities/Meeting" },
+      "description": "Project governance meetings linked to a verified parent project."
+    },
+    "/raciEntries/{entryId}": {
+      "schema": { "$ref": "#/entities/RaciEntry" },
+      "description": "Project RACI responsibility matrix entries linked to a verified parent project."
+    },
+    "/employees/{employeeId}": {
+      "schema": { "$ref": "#/entities/Employee" },
+      "description": "Organization directory entries isolated to the owning workspace or Super Admin."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "In-app notifications and reminders isolated to the owning user."
+    },
+    "/bscKras/{kraId}": {
+      "schema": { "$ref": "#/entities/BscKra" },
+      "description": "Master BSC Perspectives, Strategic Objectives, and KRAs."
+    },
+    "/projectCharters/{charterId}": {
+      "schema": { "$ref": "#/entities/ProjectCharter" },
+      "description": "8-section Turag BSC Project Charters with milestones and activities."
+    },
+    "/bscTasks/{taskId}": {
+      "schema": { "$ref": "#/entities/BscTask" },
+      "description": "Governed BSC tasks linked to an approved parent Project Charter."
+    },
+    "/bscFollowUps/{followUpId}": {
+      "schema": { "$ref": "#/entities/TaskFollowUp" },
+      "description": "Append-only follow-up audit log entries linked to a verified BSC task."
+    },
+    "/dateChangeRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/DateChangeRequest" },
+      "description": "Date-change approval requests linked to a verified BSC task."
+    },
+    "/reviewMeetings/{meetingId}": {
+      "schema": { "$ref": "#/entities/ReviewMeeting" },
+      "description": "Monthly, Quarterly, Half-Year, and Yearly BSC review meetings."
+    },
+    "/bscGovernanceConfig/{configId}": {
+      "schema": { "$ref": "#/entities/BscGovernanceConfig" },
+      "description": "Admin-configurable escalation and reminder thresholds per workspace."
+    },
+    "/calendarSyncLogs/{logId}": {
+      "schema": { "$ref": "#/entities/CalendarSyncLog" },
+      "description": "Append-only Google Calendar synchronization and error audit logs."
+    }
+  }
+}

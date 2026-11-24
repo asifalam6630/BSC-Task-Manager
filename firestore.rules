@@ -1,0 +1,1299 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // Primitive Helpers
+    // =========================================================================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerified() && request.auth.token.email == 'asifalamipe@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() ||
+        (isVerified() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    function isOwner(ownerId) {
+      return isSignedIn() && request.auth.uid == ownerId;
+    }
+
+    function isValidString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isOptionalString(data, field, maxLen) {
+      return !(field in data) || (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    function isBoundedStringList(data, field, maxItems) {
+      return !(field in data) || (
+        data[field] is list &&
+        data[field].size() <= maxItems &&
+        (data[field].size() == 0 || data[field][0] is string)
+      );
+    }
+
+    function isBoundedMapList(data, field, maxItems) {
+      return !(field in data) || (
+        data[field] is list &&
+        data[field].size() <= maxItems &&
+        (data[field].size() == 0 || data[field][0] is map)
+      );
+    }
+
+    function isValidRole(role) {
+      return role in [
+        'Super Admin',
+        'MD / Executive',
+        'ED / Project Sponsor',
+        'Project Manager',
+        'Department Head',
+        'Team Member',
+        'Viewer'
+      ];
+    }
+
+    function isValidPriority(p) {
+      return p in ['Critical', 'High', 'Medium', 'Low'];
+    }
+
+    function isValidProjectStatus(s) {
+      return s in [
+        'Not Started',
+        'Planning',
+        'In Progress',
+        'At Risk',
+        'Delayed',
+        'On Hold',
+        'Completed',
+        'Cancelled'
+      ];
+    }
+
+    function isValidTaskStatus(s) {
+      return s in [
+        'Not Started',
+        'In Progress',
+        'Pending Approval',
+        'Under Review',
+        'Completed',
+        'Delayed',
+        'On Hold'
+      ];
+    }
+
+    function isValidMeetingCategory(c) {
+      return c in [
+        'BOD Meeting',
+        'Steering Committee Meeting',
+        'Project Review Meeting',
+        'Departmental Meeting',
+        'Progress Review Meeting',
+        'Follow-up Meeting',
+        'Monthly Project Review',
+        'Quarterly BSC Review',
+        'Half-Year Business Plan Review',
+        'Yearly BSC Review',
+        'Project Steering Committee',
+        'Departmental Follow-up Meeting'
+      ];
+    }
+
+    function isValidSyncStatus(s) {
+      return s in ['not_synced', 'synced', 'pending', 'error'];
+    }
+
+    function isValidPerspective(p) {
+      return p in [
+        'Financial',
+        'Customer',
+        'Internal Business Processes',
+        'Learning & Growth',
+        'ESG'
+      ];
+    }
+
+    function isValidCharterStatus(s) {
+      return s in ['Draft', 'Pending Approval', 'Approved', 'Signed-off', 'Closed'];
+    }
+
+    function isValidBscPhase(p) {
+      return p in [
+        'Initialize',
+        'Define',
+        'Baseline',
+        'Targets',
+        'Improvement Drives',
+        'Review',
+        'Close to Deploy'
+      ];
+    }
+
+    function isValidBscTaskStatus(s) {
+      return s in [
+        'Draft',
+        'Assigned',
+        'Query Raised',
+        'Accepted',
+        'In Progress',
+        'Submitted for Review',
+        'Returned',
+        'Completed',
+        'On Hold',
+        'Blocked',
+        'Cancelled'
+      ];
+    }
+
+    function isValidDayRangeBucket(b) {
+      return b in [
+        '15 Days',
+        '30 Days',
+        '45 Days',
+        '60 Days',
+        '90 Days',
+        '180 Days',
+        '365 Days',
+        'New FY'
+      ];
+    }
+
+    // =========================================================================
+    // Entity Validation Blueprints (Anti-Update-Gap)
+    // =========================================================================
+    function isValidUserProfile(data) {
+      return isValidId(data.uid) &&
+        isValidString(data.email, 3, 200) &&
+        isValidString(data.displayName, 1, 120) &&
+        isOptionalString(data, 'photoURL', 500) &&
+        isValidRole(data.role) &&
+        isValidString(data.department, 1, 100) &&
+        isValidString(data.designation, 1, 100) &&
+        data.theme in ['light', 'dark'] &&
+        (!('reminderDays' in data) || (
+          data.reminderDays is list &&
+          data.reminderDays.size() <= 4 &&
+          (data.reminderDays.size() == 0 || data.reminderDays[0] is number)
+        )) &&
+        (!('emailAlerts' in data) || data.emailAlerts is bool) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAdminRecord(data) {
+      return isValidId(data.uid) &&
+        isValidString(data.email, 3, 200) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidProject(data) {
+      return isValidId(data.ownerId) &&
+        isValidString(data.projectCode, 1, 32) &&
+        isValidString(data.name, 1, 180) &&
+        isValidString(data.category, 1, 100) &&
+        isValidString(data.strategicObjective, 0, 400) &&
+        isValidString(data.description, 0, 2000) &&
+        isValidString(data.projectOwner, 1, 120) &&
+        isValidString(data.projectChampion, 0, 120) &&
+        isValidString(data.department, 1, 100) &&
+        isValidString(data.startDate, 8, 20) &&
+        isValidString(data.targetDate, 8, 20) &&
+        isValidPriority(data.priority) &&
+        isValidProjectStatus(data.status) &&
+        (!('budget' in data) || (data.budget is number && data.budget >= 0 && data.budget <= 1000000000000)) &&
+        isValidString(data.color, 4, 20) &&
+        isBoundedMapList(data, 'milestones', 25) &&
+        isBoundedMapList(data, 'documents', 25) &&
+        data.isDemo is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidTask(data) {
+      return isValidId(data.ownerId) &&
+        isValidString(data.taskCode, 1, 32) &&
+        isValidId(data.projectId) &&
+        isValidString(data.projectCode, 1, 32) &&
+        isOptionalString(data, 'parentTaskId', 128) &&
+        isValidString(data.name, 1, 200) &&
+        isValidString(data.description, 0, 2000) &&
+        isValidString(data.responsible, 1, 120) &&
+        isValidString(data.accountable, 0, 120) &&
+        isBoundedStringList(data, 'consulted', 10) &&
+        isBoundedStringList(data, 'informed', 10) &&
+        isValidString(data.department, 1, 100) &&
+        isValidString(data.plannedStart, 8, 20) &&
+        isValidString(data.plannedEnd, 8, 20) &&
+        isOptionalString(data, 'actualStart', 20) &&
+        isOptionalString(data, 'actualEnd', 20) &&
+        data.estimatedDays is number && data.estimatedDays >= 0 && data.estimatedDays <= 3650 &&
+        data.weight is number && data.weight >= 1 && data.weight <= 100 &&
+        isValidPriority(data.priority) &&
+        isValidTaskStatus(data.status) &&
+        data.progress is number && data.progress >= 0 && data.progress <= 100 &&
+        isBoundedStringList(data, 'dependencies', 10) &&
+        isOptionalString(data, 'remarks', 1000) &&
+        isBoundedStringList(data, 'attachments', 10) &&
+        isOptionalString(data, 'googleEventId', 200) &&
+        isValidSyncStatus(data.syncStatus) &&
+        isOptionalString(data, 'lastSyncedAt', 40) &&
+        data.isDemo is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidTaskActivity(data) {
+      return isValidId(data.ownerId) &&
+        isValidString(data.authorName, 1, 120) &&
+        data.type in ['comment', 'status_change', 'progress_update', 'sync'] &&
+        isValidString(data.message, 1, 1000) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidMeeting(data) {
+      return isValidId(data.ownerId) &&
+        isValidString(data.meetingCode, 1, 32) &&
+        isValidString(data.title, 1, 200) &&
+        isValidId(data.projectId) &&
+        isValidString(data.projectCode, 1, 32) &&
+        isValidMeetingCategory(data.category) &&
+        isValidString(data.date, 8, 20) &&
+        isValidString(data.startTime, 4, 10) &&
+        isValidString(data.endTime, 4, 10) &&
+        isValidString(data.venue, 0, 300) &&
+        isValidString(data.chairperson, 1, 120) &&
+        isBoundedStringList(data, 'participants', 25) &&
+        isValidString(data.agenda, 0, 2000) &&
+        isValidString(data.minutes, 0, 4000) &&
+        isBoundedMapList(data, 'actionPoints', 30) &&
+        isOptionalString(data, 'googleEventId', 200) &&
+        isValidSyncStatus(data.syncStatus) &&
+        isOptionalString(data, 'lastSyncedAt', 40) &&
+        data.isDemo is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidRaciEntry(data) {
+      return isValidId(data.ownerId) &&
+        isValidId(data.projectId) &&
+        isValidString(data.projectCode, 1, 32) &&
+        isValidString(data.activity, 1, 200) &&
+        isValidString(data.department, 1, 100) &&
+        data.roles is map && data.roles.size() <= 20 &&
+        data.isDemo is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidEmployee(data) {
+      return isValidId(data.ownerId) &&
+        isValidString(data.employeeCode, 1, 32) &&
+        isValidString(data.name, 1, 120) &&
+        isValidString(data.designation, 1, 120) &&
+        isValidString(data.department, 1, 100) &&
+        isValidString(data.email, 3, 200) &&
+        isValidString(data.reportingManager, 0, 120) &&
+        isValidRole(data.systemRole) &&
+        data.isDemo is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidNotification(data) {
+      return isValidId(data.ownerId) &&
+        data.type in ['deadline', 'overdue', 'assignment', 'meeting', 'delay', 'milestone', 'approval', 'raci', 'escalation', 'followup'] &&
+        isValidString(data.title, 1, 160) &&
+        isValidString(data.message, 1, 500) &&
+        isOptionalString(data, 'relatedEntityId', 128) &&
+        (!('relatedEntityType' in data) || data.relatedEntityType in ['project', 'task', 'meeting', 'raci', 'charter', 'bscTask', 'dateChange']) &&
+        data.severity in ['info', 'warning', 'critical', 'success'] &&
+        data.read is bool &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidBscKra(data) {
+      return isValidId(data.ownerId) &&
+        isValidString(data.refCode, 1, 32) &&
+        isValidPerspective(data.perspective) &&
+        isValidString(data.soCode, 1, 32) &&
+        isValidString(data.soTitle, 1, 240) &&
+        isValidString(data.title, 1, 240) &&
+        isValidString(data.unit, 1, 40) &&
+        isValidString(data.dataOwner, 1, 120) &&
+        isOptionalString(data, 'targetValue', 80) &&
+        isOptionalString(data, 'currentValue', 80) &&
+        data.completionStatus is bool &&
+        isOptionalString(data, 'confirmedBy', 120) &&
+        isOptionalString(data, 'confirmedAt', 40) &&
+        data.isDemo is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidProjectCharter(data) {
+      return isValidId(data.ownerId) &&
+        isValidString(data.charterCode, 1, 32) &&
+        isValidString(data.projectCode, 1, 32) &&
+        isOptionalString(data, 'projectId', 128) &&
+        isValidString(data.title, 1, 200) &&
+        isValidPerspective(data.perspective) &&
+        isValidString(data.soCode, 1, 32) &&
+        isBoundedStringList(data, 'kraIds', 20) &&
+        isValidCharterStatus(data.status) &&
+        isOptionalString(data, 'businessNeed', 2000) &&
+        isOptionalString(data, 'scope', 2000) &&
+        isOptionalString(data, 'objectivesGoals', 2000) &&
+        isOptionalString(data, 'opportunity', 2000) &&
+        isOptionalString(data, 'deliverables', 2000) &&
+        isOptionalString(data, 'risksAssumptions', 2000) &&
+        isOptionalString(data, 'teamSignOff', 1000) &&
+        isValidString(data.projectLead, 1, 120) &&
+        isValidString(data.projectManager, 1, 120) &&
+        isValidString(data.projectHead, 1, 120) &&
+        isValidString(data.projectSponsor, 1, 120) &&
+        isValidString(data.startDate, 8, 20) &&
+        isValidString(data.targetDate, 8, 20) &&
+        isBoundedMapList(data, 'milestones', 25) &&
+        data.charterRevision is number && data.charterRevision >= 1 && data.charterRevision <= 1000 &&
+        isOptionalString(data, 'closureNote', 2000) &&
+        data.isDemo is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidBscTask(data) {
+      return isValidId(data.ownerId) &&
+        isValidString(data.taskCode, 1, 48) &&
+        isOptionalString(data, 'projectId', 128) &&
+        isValidId(data.charterId) &&
+        isValidString(data.charterCode, 1, 32) &&
+        isValidString(data.milestoneId, 1, 128) &&
+        data.milestoneNumber is number && data.milestoneNumber >= 1 && data.milestoneNumber <= 100 &&
+        isBoundedStringList(data, 'kraIds', 15) &&
+        isValidBscPhase(data.phase) &&
+        isValidString(data.title, 1, 220) &&
+        isValidString(data.description, 0, 2000) &&
+        isValidString(data.deliverableEvidence, 1, 400) &&
+        isOptionalString(data, 'responsibleId', 128) &&
+        isValidString(data.responsibleName, 1, 120) &&
+        isOptionalString(data, 'accountableId', 128) &&
+        isValidString(data.accountableName, 1, 120) &&
+        isBoundedStringList(data, 'consultedIds', 10) &&
+        isBoundedStringList(data, 'informedIds', 10) &&
+        isValidPriority(data.priority) &&
+        isValidString(data.baselineStart, 8, 20) &&
+        isValidString(data.baselineEnd, 8, 20) &&
+        data.baselineLocked is bool &&
+        isValidString(data.plannedStart, 8, 20) &&
+        isValidString(data.plannedEnd, 8, 20) &&
+        isOptionalString(data, 'actualStart', 20) &&
+        isOptionalString(data, 'actualEnd', 20) &&
+        isValidDayRangeBucket(data.dayRangeBucket) &&
+        data.weight is number && data.weight >= 1 && data.weight <= 100 &&
+        isBoundedStringList(data, 'predecessorIds', 10) &&
+        isValidBscTaskStatus(data.status) &&
+        data.percentComplete is number && data.percentComplete >= 0 && data.percentComplete <= 100 &&
+        data.followUpFrequency in ['Daily', 'Weekly', 'Bi-weekly', 'Monthly'] &&
+        isValidString(data.nextFollowUpDate, 8, 20) &&
+        isOptionalString(data, 'assignedAt', 40) &&
+        isOptionalString(data, 'submittedAt', 40) &&
+        isOptionalString(data, 'approvedAt', 40) &&
+        isOptionalString(data, 'blockedSince', 20) &&
+        isOptionalString(data, 'statusReason', 1000) &&
+        (!('charterChangedFlag' in data) || data.charterChangedFlag is bool) &&
+        isBoundedStringList(data, 'attachments', 15) &&
+        isOptionalString(data, 'sourceActionItemId', 128) &&
+        isOptionalString(data, 'parentTaskId', 128) &&
+        isOptionalString(data, 'department', 100) &&
+        isOptionalString(data, 'googleEventId', 200) &&
+        (!('syncStatus' in data) || isValidSyncStatus(data.syncStatus)) &&
+        isOptionalString(data, 'lastSyncedAt', 40) &&
+        isValidString(data.createdBy, 1, 120) &&
+        isValidString(data.updatedBy, 1, 120) &&
+        data.isDemo is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidTaskFollowUp(data) {
+      return isValidId(data.ownerId) &&
+        isValidId(data.taskId) &&
+        isValidString(data.taskCode, 1, 48) &&
+        isValidString(data.charterId, 1, 128) &&
+        isValidString(data.date, 8, 20) &&
+        isValidString(data.updatedBy, 1, 120) &&
+        isValidString(data.progressNote, 1, 2000) &&
+        data.percentBefore is number && data.percentBefore >= 0 && data.percentBefore <= 100 &&
+        data.percentAfter is number && data.percentAfter >= 0 && data.percentAfter <= 100 &&
+        isValidString(data.statusBefore, 1, 40) &&
+        isValidString(data.statusAfter, 1, 40) &&
+        isOptionalString(data, 'issuesBlockers', 1000) &&
+        isOptionalString(data, 'supportNeededFrom', 200) &&
+        isOptionalString(data, 'nextAction', 600) &&
+        isOptionalString(data, 'nextFollowUpDate', 20) &&
+        isBoundedStringList(data, 'attachments', 10) &&
+        data.type in ['Owner Update', 'PM Follow-up', 'Review Comment', 'Escalation', 'System Reminder'] &&
+        data.onTime is bool &&
+        data.isDemo is bool &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidDateChangeRequest(data) {
+      return isValidId(data.ownerId) &&
+        isValidId(data.taskId) &&
+        isValidString(data.taskCode, 1, 48) &&
+        isValidString(data.charterId, 1, 128) &&
+        isValidString(data.milestoneId, 1, 128) &&
+        isValidString(data.oldEnd, 8, 20) &&
+        isValidString(data.proposedEnd, 8, 20) &&
+        isValidString(data.reason, 1, 1000) &&
+        data.impactOnMilestone is bool &&
+        isValidString(data.requestedBy, 1, 120) &&
+        isValidString(data.approverA, 1, 120) &&
+        isOptionalString(data, 'approverEd', 120) &&
+        data.decisionA in ['Pending', 'Approved', 'Rejected'] &&
+        data.decisionEd in ['Not Required', 'Pending', 'Approved', 'Rejected'] &&
+        data.decision in ['Pending', 'Approved', 'Rejected'] &&
+        isOptionalString(data, 'decisionDate', 40) &&
+        isOptionalString(data, 'comment', 1000) &&
+        data.isDemo is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidReviewMeeting(data) {
+      return isValidId(data.ownerId) &&
+        isOptionalString(data, 'meetingCode', 32) &&
+        isOptionalString(data, 'projectId', 128) &&
+        isOptionalString(data, 'charterId', 128) &&
+        (!('perspective' in data) || isValidPerspective(data.perspective)) &&
+        data.type in [
+          'Monthly Project Review',
+          'Quarterly BSC Review',
+          'Half-Year BP Review',
+          'Half-Year Business Plan Review',
+          'Yearly Review',
+          'Yearly BSC Review',
+          'Project Steering Committee',
+          'Departmental Follow-up Meeting'
+        ] &&
+        isValidString(data.title, 1, 200) &&
+        isValidString(data.date, 8, 20) &&
+        isOptionalString(data, 'startTime', 10) &&
+        isOptionalString(data, 'endTime', 10) &&
+        isOptionalString(data, 'venue', 300) &&
+        isOptionalString(data, 'chairperson', 120) &&
+        isBoundedStringList(data, 'attendees', 30) &&
+        isOptionalString(data, 'agenda', 2000) &&
+        isValidString(data.minutes, 0, 4000) &&
+        isValidString(data.decisions, 0, 2000) &&
+        isBoundedMapList(data, 'actionItems', 40) &&
+        isOptionalString(data, 'googleEventId', 200) &&
+        (!('syncStatus' in data) || isValidSyncStatus(data.syncStatus)) &&
+        isOptionalString(data, 'lastSyncedAt', 40) &&
+        data.isDemo is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidCalendarSyncLog(data) {
+      return isValidId(data.ownerId) &&
+        data.entityType in ['task', 'bscTask', 'meeting', 'reviewMeeting', 'calendar'] &&
+        isValidString(data.entityId, 1, 128) &&
+        isValidString(data.entityCode, 1, 48) &&
+        isOptionalString(data, 'googleEventId', 200) &&
+        data.action in ['create', 'update', 'cancel', 'pull', 'error'] &&
+        data.status in ['success', 'error'] &&
+        isValidString(data.message, 1, 500) &&
+        isValidString(data.actorName, 1, 120) &&
+        isValidString(data.syncedAt, 8, 40) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidBscGovernanceConfig(data) {
+      return isValidId(data.ownerId) &&
+        data.reminderDaysBeforeDue is number && data.reminderDaysBeforeDue >= 1 && data.reminderDaysBeforeDue <= 30 &&
+        data.escalationL1Days is number && data.escalationL1Days >= 1 && data.escalationL1Days <= 30 &&
+        data.escalationL2Days is number && data.escalationL2Days >= 1 && data.escalationL2Days <= 60 &&
+        data.escalationL3Days is number && data.escalationL3Days >= 1 && data.escalationL3Days <= 90 &&
+        data.escalationL4Days is number && data.escalationL4Days >= 1 && data.escalationL4Days <= 180 &&
+        data.blockedEscalationDays is number && data.blockedEscalationDays >= 1 && data.blockedEscalationDays <= 30 &&
+        data.followUpComplianceTarget is number && data.followUpComplianceTarget >= 50 && data.followUpComplianceTarget <= 100 &&
+        isValidString(data.dailyDigestTime, 4, 10) &&
+        isValidString(data.dailyDigestTimezone, 3, 50) &&
+        data.channels is map && data.channels.size() <= 8 &&
+        data.updatedAt is timestamp;
+    }
+
+    function projectBelongsToCaller(projectId) {
+      return (
+        exists(/databases/$(database)/documents/projects/$(projectId)) &&
+        get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid
+      ) || (
+        existsAfter(/databases/$(database)/documents/projects/$(projectId)) &&
+        getAfter(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid
+      );
+    }
+
+    function charterBelongsToCallerAndApproved(charterId) {
+      return (
+        exists(/databases/$(database)/documents/projectCharters/$(charterId)) &&
+        get(/databases/$(database)/documents/projectCharters/$(charterId)).data.ownerId == request.auth.uid &&
+        get(/databases/$(database)/documents/projectCharters/$(charterId)).data.status in ['Approved', 'Signed-off']
+      ) || (
+        existsAfter(/databases/$(database)/documents/projectCharters/$(charterId)) &&
+        getAfter(/databases/$(database)/documents/projectCharters/$(charterId)).data.ownerId == request.auth.uid &&
+        getAfter(/databases/$(database)/documents/projectCharters/$(charterId)).data.status in ['Approved', 'Signed-off']
+      );
+    }
+
+    function bscTaskBelongsToCaller(taskId) {
+      return (
+        exists(/databases/$(database)/documents/bscTasks/$(taskId)) &&
+        get(/databases/$(database)/documents/bscTasks/$(taskId)).data.ownerId == request.auth.uid
+      ) || (
+        existsAfter(/databases/$(database)/documents/bscTasks/$(taskId)) &&
+        getAfter(/databases/$(database)/documents/bscTasks/$(taskId)).data.ownerId == request.auth.uid
+      );
+    }
+
+    // =========================================================================
+    // /users/{userId} — PII Isolated to Owner or Super Admin
+    // =========================================================================
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isSignedIn() && (resource.data.uid == request.auth.uid || isBootstrappedAdmin());
+
+      allow create: if isVerified() &&
+        isValidId(userId) &&
+        request.auth.uid == userId &&
+        incoming().uid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        incoming().keys().hasAll(['uid', 'email', 'displayName', 'role', 'department', 'designation', 'theme', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['uid', 'email', 'displayName', 'photoURL', 'role', 'department', 'designation', 'theme', 'reminderDays', 'emailAlerts', 'createdAt', 'updatedAt']) &&
+        isValidUserProfile(incoming()) &&
+        (incoming().role == 'Team Member' || (incoming().role == 'Super Admin' && isBootstrappedAdmin()));
+
+      allow update: if isVerified() &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          (request.auth.uid == userId &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'department', 'designation', 'theme', 'reminderDays', 'emailAlerts', 'updatedAt'])) ||
+          (isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'role', 'department', 'designation', 'theme', 'reminderDays', 'emailAlerts', 'updatedAt']))
+        );
+
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    // =========================================================================
+    // /admins/{userId}
+    // =========================================================================
+    match /admins/{userId} {
+      allow get: if isValidId(userId) && isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isBootstrappedAdmin();
+      allow create: if isValidId(userId) && isAdmin() &&
+        incoming().uid == userId &&
+        incoming().createdAt == request.time &&
+        incoming().keys().hasAll(['uid', 'email', 'createdAt']) &&
+        incoming().keys().hasOnly(['uid', 'email', 'createdAt']) &&
+        isValidAdminRecord(incoming());
+      allow update: if false;
+      allow delete: if isValidId(userId) && isBootstrappedAdmin();
+    }
+
+    // =========================================================================
+    // /projects/{projectId}
+    // =========================================================================
+    match /projects/{projectId} {
+      allow get: if isValidId(projectId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isVerified() &&
+        isValidId(projectId) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        incoming().keys().hasAll([
+          'ownerId', 'projectCode', 'name', 'category', 'strategicObjective',
+          'description', 'projectOwner', 'projectChampion', 'department',
+          'startDate', 'targetDate', 'priority', 'status', 'color', 'isDemo',
+          'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'ownerId', 'projectCode', 'name', 'category', 'strategicObjective',
+          'description', 'projectOwner', 'projectChampion', 'department',
+          'startDate', 'targetDate', 'priority', 'status', 'budget', 'color',
+          'milestones', 'documents', 'isDemo', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidProject(incoming());
+
+      allow update: if isVerified() &&
+        isValidId(projectId) &&
+        isValidProject(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          (isOwner(existing().ownerId) &&
+            !(existing().status in ['Completed', 'Cancelled']) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'projectCode', 'name', 'category', 'strategicObjective', 'description',
+              'projectOwner', 'projectChampion', 'department', 'startDate', 'targetDate',
+              'priority', 'status', 'budget', 'color', 'milestones', 'documents', 'updatedAt'
+            ])) ||
+          (isOwner(existing().ownerId) &&
+            existing().status in ['Completed', 'Cancelled'] &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])) ||
+          (isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'projectCode', 'name', 'category', 'strategicObjective', 'description',
+              'projectOwner', 'projectChampion', 'department', 'startDate', 'targetDate',
+              'priority', 'status', 'budget', 'color', 'milestones', 'documents', 'updatedAt'
+            ]))
+        );
+
+      allow delete: if isVerified() && isValidId(projectId) && (isOwner(existing().ownerId) || isAdmin());
+    }
+
+    // =========================================================================
+    // /tasks/{taskId}
+    // =========================================================================
+    match /tasks/{taskId} {
+      allow get: if isValidId(taskId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isVerified() &&
+        isValidId(taskId) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        incoming().keys().hasAll([
+          'ownerId', 'taskCode', 'projectId', 'projectCode', 'name', 'description',
+          'responsible', 'accountable', 'department', 'plannedStart', 'plannedEnd',
+          'estimatedDays', 'weight', 'priority', 'status', 'progress', 'syncStatus',
+          'isDemo', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'ownerId', 'taskCode', 'projectId', 'projectCode', 'parentTaskId', 'name',
+          'description', 'responsible', 'accountable', 'consulted', 'informed',
+          'department', 'plannedStart', 'plannedEnd', 'actualStart', 'actualEnd',
+          'estimatedDays', 'weight', 'priority', 'status', 'progress', 'dependencies',
+          'remarks', 'attachments', 'googleEventId', 'syncStatus', 'lastSyncedAt',
+          'isDemo', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidTask(incoming()) &&
+        projectBelongsToCaller(incoming().projectId);
+
+      allow update: if isVerified() &&
+        isValidId(taskId) &&
+        isValidTask(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().projectId == existing().projectId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          (isOwner(existing().ownerId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'plannedStart', 'plannedEnd', 'actualStart', 'actualEnd',
+              'status', 'progress', 'remarks', 'updatedAt'
+            ])) ||
+          (isOwner(existing().ownerId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'googleEventId', 'syncStatus', 'lastSyncedAt', 'updatedAt'
+            ])) ||
+          ((isAdmin() || (isOwner(existing().ownerId) && existing().status != 'Completed')) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'taskCode', 'projectCode', 'parentTaskId', 'name', 'description',
+              'responsible', 'accountable', 'consulted', 'informed', 'department',
+              'plannedStart', 'plannedEnd', 'actualStart', 'actualEnd', 'estimatedDays',
+              'weight', 'priority', 'status', 'progress', 'dependencies', 'remarks',
+              'attachments', 'googleEventId', 'syncStatus', 'lastSyncedAt', 'updatedAt'
+            ]))
+        );
+
+      allow delete: if isVerified() && isValidId(taskId) && (isOwner(existing().ownerId) || isAdmin());
+
+      match /activity/{activityId} {
+        allow get: if isValidId(taskId) && isValidId(activityId) && isSignedIn() &&
+          get(/databases/$(database)/documents/tasks/$(taskId)).data.ownerId == request.auth.uid;
+        allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+        allow create: if isVerified() &&
+          isValidId(taskId) &&
+          isValidId(activityId) &&
+          incoming().ownerId == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          incoming().keys().hasAll(['ownerId', 'authorName', 'type', 'message', 'createdAt']) &&
+          incoming().keys().hasOnly(['ownerId', 'authorName', 'type', 'message', 'createdAt']) &&
+          isValidTaskActivity(incoming()) &&
+          get(/databases/$(database)/documents/tasks/$(taskId)).data.ownerId == request.auth.uid;
+        allow update: if false;
+        allow delete: if isVerified() && isValidId(taskId) && isValidId(activityId) &&
+          get(/databases/$(database)/documents/tasks/$(taskId)).data.ownerId == request.auth.uid;
+      }
+    }
+
+    // =========================================================================
+    // /meetings/{meetingId}
+    // =========================================================================
+    match /meetings/{meetingId} {
+      allow get: if isValidId(meetingId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isVerified() &&
+        isValidId(meetingId) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        incoming().keys().hasAll([
+          'ownerId', 'meetingCode', 'title', 'projectId', 'projectCode', 'category',
+          'date', 'startTime', 'endTime', 'venue', 'chairperson', 'agenda', 'minutes',
+          'syncStatus', 'isDemo', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'ownerId', 'meetingCode', 'title', 'projectId', 'projectCode', 'category',
+          'date', 'startTime', 'endTime', 'venue', 'chairperson', 'participants',
+          'agenda', 'minutes', 'actionPoints', 'googleEventId', 'syncStatus',
+          'lastSyncedAt', 'isDemo', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidMeeting(incoming()) &&
+        projectBelongsToCaller(incoming().projectId);
+
+      allow update: if isVerified() &&
+        isValidId(meetingId) &&
+        isValidMeeting(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().projectId == existing().projectId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          (isOwner(existing().ownerId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'googleEventId', 'syncStatus', 'lastSyncedAt', 'updatedAt'
+            ])) ||
+          ((isOwner(existing().ownerId) || isAdmin()) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'meetingCode', 'title', 'projectCode', 'category', 'date', 'startTime',
+              'endTime', 'venue', 'chairperson', 'participants', 'agenda', 'minutes',
+              'actionPoints', 'googleEventId', 'syncStatus', 'lastSyncedAt', 'updatedAt'
+            ]))
+        );
+
+      allow delete: if isVerified() && isValidId(meetingId) && (isOwner(existing().ownerId) || isAdmin());
+    }
+
+    // =========================================================================
+    // /raciEntries/{entryId}
+    // =========================================================================
+    match /raciEntries/{entryId} {
+      allow get: if isValidId(entryId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isVerified() &&
+        isValidId(entryId) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        incoming().keys().hasAll([
+          'ownerId', 'projectId', 'projectCode', 'activity', 'department', 'roles',
+          'isDemo', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'ownerId', 'projectId', 'projectCode', 'activity', 'department', 'roles',
+          'isDemo', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidRaciEntry(incoming()) &&
+        projectBelongsToCaller(incoming().projectId);
+
+      allow update: if isVerified() &&
+        isValidId(entryId) &&
+        isValidRaciEntry(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().projectId == existing().projectId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (isOwner(existing().ownerId) || isAdmin()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'projectCode', 'activity', 'department', 'roles', 'updatedAt'
+        ]);
+
+      allow delete: if isVerified() && isValidId(entryId) && (isOwner(existing().ownerId) || isAdmin());
+    }
+
+    // =========================================================================
+    // /employees/{employeeId} — PII Isolated to Workspace Owner or Admin
+    // =========================================================================
+    match /employees/{employeeId} {
+      allow get: if isValidId(employeeId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isVerified() &&
+        isValidId(employeeId) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        incoming().keys().hasAll([
+          'ownerId', 'employeeCode', 'name', 'designation', 'department',
+          'email', 'reportingManager', 'systemRole', 'isDemo', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'ownerId', 'employeeCode', 'name', 'designation', 'department',
+          'email', 'reportingManager', 'systemRole', 'isDemo', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidEmployee(incoming());
+
+      allow update: if isVerified() &&
+        isValidId(employeeId) &&
+        isValidEmployee(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (isOwner(existing().ownerId) || isAdmin()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'employeeCode', 'name', 'designation', 'department',
+          'email', 'reportingManager', 'systemRole', 'updatedAt'
+        ]);
+
+      allow delete: if isVerified() && isValidId(employeeId) && (isOwner(existing().ownerId) || isAdmin());
+    }
+
+    // =========================================================================
+    // /notifications/{notificationId}
+    // =========================================================================
+    match /notifications/{notificationId} {
+      allow get: if isValidId(notificationId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isVerified() &&
+        isValidId(notificationId) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().keys().hasAll(['ownerId', 'type', 'title', 'message', 'severity', 'read', 'createdAt']) &&
+        incoming().keys().hasOnly(['ownerId', 'type', 'title', 'message', 'relatedEntityId', 'relatedEntityType', 'severity', 'read', 'createdAt']) &&
+        isValidNotification(incoming());
+
+      allow update: if isVerified() &&
+        isValidId(notificationId) &&
+        isValidNotification(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        (isOwner(existing().ownerId) || isAdmin()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['read']);
+
+      allow delete: if isVerified() && isValidId(notificationId) && (isOwner(existing().ownerId) || isAdmin());
+    }
+
+    // =========================================================================
+    // /bscKras/{kraId} — Master BSC Perspectives, SOs & KRAs
+    // =========================================================================
+    match /bscKras/{kraId} {
+      allow get: if isValidId(kraId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isVerified() &&
+        isValidId(kraId) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        incoming().keys().hasAll([
+          'ownerId', 'refCode', 'perspective', 'soCode', 'soTitle', 'title',
+          'unit', 'dataOwner', 'completionStatus', 'isDemo', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'ownerId', 'refCode', 'perspective', 'soCode', 'soTitle', 'title',
+          'unit', 'dataOwner', 'targetValue', 'currentValue', 'completionStatus',
+          'confirmedBy', 'confirmedAt', 'isDemo', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidBscKra(incoming());
+
+      allow update: if isVerified() &&
+        isValidId(kraId) &&
+        isValidBscKra(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          (isOwner(existing().ownerId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'currentValue', 'completionStatus', 'confirmedBy', 'confirmedAt', 'updatedAt'
+            ])) ||
+          ((isOwner(existing().ownerId) || isAdmin()) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'refCode', 'perspective', 'soCode', 'soTitle', 'title', 'unit', 'dataOwner',
+              'targetValue', 'currentValue', 'completionStatus', 'confirmedBy', 'confirmedAt', 'updatedAt'
+            ]))
+        );
+
+      allow delete: if isVerified() && isValidId(kraId) && (isOwner(existing().ownerId) || isAdmin());
+    }
+
+    // =========================================================================
+    // /projectCharters/{charterId} — 8-Section BSC Project Charters
+    // =========================================================================
+    match /projectCharters/{charterId} {
+      allow get: if isValidId(charterId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isVerified() &&
+        isValidId(charterId) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        incoming().keys().hasAll([
+          'ownerId', 'charterCode', 'projectCode', 'title', 'perspective', 'soCode',
+          'status', 'projectLead', 'projectManager', 'projectHead', 'projectSponsor',
+          'startDate', 'targetDate', 'charterRevision', 'isDemo', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'ownerId', 'charterCode', 'projectCode', 'projectId', 'title', 'perspective',
+          'soCode', 'kraIds', 'status', 'businessNeed', 'scope', 'objectivesGoals',
+          'opportunity', 'deliverables', 'risksAssumptions', 'teamSignOff', 'projectLead',
+          'projectManager', 'projectHead', 'projectSponsor', 'startDate', 'targetDate',
+          'milestones', 'charterRevision', 'closureNote', 'isDemo', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidProjectCharter(incoming());
+
+      allow update: if isVerified() &&
+        isValidId(charterId) &&
+        isValidProjectCharter(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          (isOwner(existing().ownerId) &&
+            existing().status != 'Closed' &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'title', 'perspective', 'soCode', 'kraIds', 'status', 'businessNeed', 'scope',
+              'objectivesGoals', 'opportunity', 'deliverables', 'risksAssumptions', 'teamSignOff',
+              'projectLead', 'projectManager', 'projectHead', 'projectSponsor', 'startDate',
+              'targetDate', 'milestones', 'charterRevision', 'closureNote', 'updatedAt'
+            ])) ||
+          (isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'charterCode', 'projectCode', 'projectId', 'title', 'perspective', 'soCode',
+              'kraIds', 'status', 'businessNeed', 'scope', 'objectivesGoals', 'opportunity',
+              'deliverables', 'risksAssumptions', 'teamSignOff', 'projectLead', 'projectManager',
+              'projectHead', 'projectSponsor', 'startDate', 'targetDate', 'milestones',
+              'charterRevision', 'closureNote', 'updatedAt'
+            ]))
+        );
+
+      allow delete: if isVerified() && isValidId(charterId) && (isOwner(existing().ownerId) || isAdmin());
+    }
+
+    // =========================================================================
+    // /bscTasks/{taskId} — Governed BSC Tasks (Approved Charter Master Gate)
+    // =========================================================================
+    match /bscTasks/{taskId} {
+      allow get: if isValidId(taskId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isVerified() &&
+        isValidId(taskId) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        incoming().keys().hasAll([
+          'ownerId', 'taskCode', 'charterId', 'charterCode', 'milestoneId', 'milestoneNumber',
+          'phase', 'title', 'description', 'deliverableEvidence', 'responsibleName', 'accountableName',
+          'priority', 'baselineStart', 'baselineEnd', 'baselineLocked', 'plannedStart', 'plannedEnd',
+          'dayRangeBucket', 'weight', 'status', 'percentComplete', 'followUpFrequency',
+          'nextFollowUpDate', 'isDemo', 'createdBy', 'updatedBy', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'ownerId', 'taskCode', 'projectId', 'charterId', 'charterCode', 'milestoneId',
+          'milestoneNumber', 'kraIds', 'phase', 'title', 'description', 'deliverableEvidence',
+          'responsibleId', 'responsibleName', 'accountableId', 'accountableName', 'consultedIds',
+          'informedIds', 'priority', 'baselineStart', 'baselineEnd', 'baselineLocked',
+          'plannedStart', 'plannedEnd', 'actualStart', 'actualEnd', 'dayRangeBucket', 'weight',
+          'predecessorIds', 'status', 'percentComplete', 'followUpFrequency', 'nextFollowUpDate',
+          'assignedAt', 'submittedAt', 'approvedAt', 'blockedSince', 'statusReason',
+          'charterChangedFlag', 'attachments', 'sourceActionItemId', 'parentTaskId', 'department',
+          'googleEventId', 'syncStatus', 'lastSyncedAt', 'createdBy', 'updatedBy',
+          'isDemo', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidBscTask(incoming()) &&
+        charterBelongsToCallerAndApproved(incoming().charterId);
+
+      allow update: if isVerified() &&
+        isValidId(taskId) &&
+        isValidBscTask(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().charterId == existing().charterId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        // IMMUTABLE BASELINE INVARIANT: once locked, baselineStart & baselineEnd can NEVER change
+        (!existing().baselineLocked || (
+          incoming().baselineStart == existing().baselineStart &&
+          incoming().baselineEnd == existing().baselineEnd &&
+          incoming().baselineLocked == true
+        )) &&
+        // COMPLETION EVIDENCE & APPROVAL GATE: cannot transition to Completed without Submitted for Review + evidence
+        (incoming().status != 'Completed' || (
+          existing().status == 'Submitted for Review' &&
+          'attachments' in incoming() &&
+          incoming().attachments.size() >= 1
+        )) && (
+          // Action 1: Assign Draft task (locks baseline dates)
+          (isOwner(existing().ownerId) &&
+            existing().status == 'Draft' &&
+            incoming().status == 'Assigned' &&
+            incoming().baselineLocked == true &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'baselineStart', 'baselineEnd', 'baselineLocked', 'plannedStart',
+              'plannedEnd', 'dayRangeBucket', 'responsibleId', 'responsibleName',
+              'accountableId', 'accountableName', 'deliverableEvidence', 'assignedAt',
+              'nextFollowUpDate', 'updatedBy', 'updatedAt'
+            ])) ||
+          // Action 2: Google Calendar sync metadata update on any owned task
+          (isOwner(existing().ownerId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'googleEventId', 'syncStatus', 'lastSyncedAt', 'updatedAt'
+            ])) ||
+          // Action 3: Execution & workflow updates on active (non-terminal) task
+          (isOwner(existing().ownerId) &&
+            !(existing().status in ['Completed', 'Cancelled']) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'percentComplete', 'actualStart', 'actualEnd', 'nextFollowUpDate',
+              'followUpFrequency', 'submittedAt', 'approvedAt', 'blockedSince', 'statusReason',
+              'attachments', 'charterChangedFlag', 'plannedStart', 'plannedEnd', 'dayRangeBucket',
+              'title', 'description', 'deliverableEvidence', 'phase', 'priority', 'weight',
+              'kraIds', 'consultedIds', 'informedIds', 'predecessorIds', 'responsibleId',
+              'responsibleName', 'accountableId', 'accountableName', 'parentTaskId', 'department',
+              'googleEventId', 'syncStatus', 'lastSyncedAt', 'updatedBy', 'updatedAt'
+            ])) ||
+          // Action 4: Charter revision flag on any task
+          (isOwner(existing().ownerId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['charterChangedFlag', 'updatedBy', 'updatedAt'])) ||
+          // Action 5: Admin override (preserves baseline lock & evidence invariants above)
+          (isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'percentComplete', 'plannedStart', 'plannedEnd', 'actualStart', 'actualEnd',
+              'dayRangeBucket', 'nextFollowUpDate', 'followUpFrequency', 'statusReason', 'attachments',
+              'charterChangedFlag', 'priority', 'weight', 'phase', 'kraIds', 'predecessorIds',
+              'responsibleId', 'responsibleName', 'accountableId', 'accountableName', 'parentTaskId',
+              'department', 'googleEventId', 'syncStatus', 'lastSyncedAt',
+              'approvedAt', 'submittedAt', 'blockedSince', 'updatedBy', 'updatedAt'
+            ]))
+        );
+
+      allow delete: if isVerified() && isValidId(taskId) && (isOwner(existing().ownerId) || isAdmin());
+    }
+
+    // =========================================================================
+    // /bscFollowUps/{followUpId} — STRICTLY APPEND-ONLY Follow-Up Audit Log
+    // =========================================================================
+    match /bscFollowUps/{followUpId} {
+      allow get: if isValidId(followUpId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isVerified() &&
+        isValidId(followUpId) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().keys().hasAll([
+          'ownerId', 'taskId', 'taskCode', 'charterId', 'date', 'updatedBy', 'progressNote',
+          'percentBefore', 'percentAfter', 'statusBefore', 'statusAfter', 'type', 'onTime',
+          'isDemo', 'createdAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'ownerId', 'taskId', 'taskCode', 'charterId', 'date', 'updatedBy', 'progressNote',
+          'percentBefore', 'percentAfter', 'statusBefore', 'statusAfter', 'issuesBlockers',
+          'supportNeededFrom', 'nextAction', 'nextFollowUpDate', 'attachments', 'type',
+          'onTime', 'isDemo', 'createdAt'
+        ]) &&
+        isValidTaskFollowUp(incoming()) &&
+        bscTaskBelongsToCaller(incoming().taskId);
+
+      // Append-only: Follow-ups are NEVER edited
+      allow update: if false;
+      // Only toggleable demo seed entries may be cleared; live audit entries can NEVER be deleted
+      allow delete: if isVerified() && isValidId(followUpId) &&
+        existing().isDemo == true && (isOwner(existing().ownerId) || isAdmin());
+    }
+
+    // =========================================================================
+    // /dateChangeRequests/{requestId} — Governed Due-Date Change Approvals
+    // =========================================================================
+    match /dateChangeRequests/{requestId} {
+      allow get: if isValidId(requestId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isVerified() &&
+        isValidId(requestId) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        incoming().keys().hasAll([
+          'ownerId', 'taskId', 'taskCode', 'charterId', 'milestoneId', 'oldEnd', 'proposedEnd',
+          'reason', 'impactOnMilestone', 'requestedBy', 'approverA', 'decisionA', 'decisionEd',
+          'decision', 'isDemo', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'ownerId', 'taskId', 'taskCode', 'charterId', 'milestoneId', 'oldEnd', 'proposedEnd',
+          'reason', 'impactOnMilestone', 'requestedBy', 'approverA', 'approverEd', 'decisionA',
+          'decisionEd', 'decision', 'decisionDate', 'comment', 'isDemo', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidDateChangeRequest(incoming()) &&
+        bscTaskBelongsToCaller(incoming().taskId);
+
+      allow update: if isVerified() &&
+        isValidId(requestId) &&
+        isValidDateChangeRequest(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().taskId == existing().taskId &&
+        incoming().oldEnd == existing().oldEnd &&
+        incoming().proposedEnd == existing().proposedEnd &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          ((isOwner(existing().ownerId) || isAdmin()) &&
+            existing().decision == 'Pending' &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'decisionA', 'decisionEd', 'decision', 'decisionDate', 'comment', 'updatedAt'
+            ])) ||
+          (isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'decisionA', 'decisionEd', 'decision', 'decisionDate', 'comment', 'updatedAt'
+            ]))
+        );
+
+      allow delete: if isVerified() && isValidId(requestId) && (isOwner(existing().ownerId) || isAdmin());
+    }
+
+    // =========================================================================
+    // /reviewMeetings/{meetingId} — Unified BSC Review & Steering Meetings
+    // =========================================================================
+    match /reviewMeetings/{meetingId} {
+      allow get: if isValidId(meetingId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isVerified() &&
+        isValidId(meetingId) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        incoming().keys().hasAll([
+          'ownerId', 'type', 'title', 'date', 'minutes', 'decisions', 'isDemo', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'ownerId', 'meetingCode', 'projectId', 'charterId', 'perspective', 'type', 'title',
+          'date', 'startTime', 'endTime', 'venue', 'chairperson', 'attendees', 'agenda',
+          'minutes', 'decisions', 'actionItems', 'googleEventId', 'syncStatus', 'lastSyncedAt',
+          'isDemo', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidReviewMeeting(incoming());
+
+      allow update: if isVerified() &&
+        isValidId(meetingId) &&
+        isValidReviewMeeting(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          (isOwner(existing().ownerId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'googleEventId', 'syncStatus', 'lastSyncedAt', 'updatedAt'
+            ])) ||
+          ((isOwner(existing().ownerId) || isAdmin()) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'meetingCode', 'projectId', 'charterId', 'perspective', 'type', 'title',
+              'date', 'startTime', 'endTime', 'venue', 'chairperson', 'attendees', 'agenda',
+              'minutes', 'decisions', 'actionItems', 'googleEventId', 'syncStatus',
+              'lastSyncedAt', 'updatedAt'
+            ]))
+        );
+
+      allow delete: if isVerified() && isValidId(meetingId) && (isOwner(existing().ownerId) || isAdmin());
+    }
+
+    // =========================================================================
+    // /bscGovernanceConfig/{configId} — Escalation & Reminder Thresholds
+    // =========================================================================
+    match /bscGovernanceConfig/{configId} {
+      allow get: if isValidId(configId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isVerified() &&
+        isValidId(configId) &&
+        configId == request.auth.uid &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().updatedAt == request.time &&
+        incoming().keys().hasAll([
+          'ownerId', 'reminderDaysBeforeDue', 'escalationL1Days', 'escalationL2Days',
+          'escalationL3Days', 'escalationL4Days', 'blockedEscalationDays',
+          'followUpComplianceTarget', 'dailyDigestTime', 'dailyDigestTimezone', 'channels', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'ownerId', 'reminderDaysBeforeDue', 'escalationL1Days', 'escalationL2Days',
+          'escalationL3Days', 'escalationL4Days', 'blockedEscalationDays',
+          'followUpComplianceTarget', 'dailyDigestTime', 'dailyDigestTimezone', 'channels', 'updatedAt'
+        ]) &&
+        isValidBscGovernanceConfig(incoming());
+
+      allow update: if isVerified() &&
+        isValidId(configId) &&
+        isValidBscGovernanceConfig(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().updatedAt == request.time &&
+        (isOwner(existing().ownerId) || isAdmin()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'reminderDaysBeforeDue', 'escalationL1Days', 'escalationL2Days',
+          'escalationL3Days', 'escalationL4Days', 'blockedEscalationDays',
+          'followUpComplianceTarget', 'dailyDigestTime', 'dailyDigestTimezone', 'channels', 'updatedAt'
+        ]);
+
+      allow delete: if isVerified() && isValidId(configId) && isAdmin();
+    }
+
+    // =========================================================================
+    // /calendarSyncLogs/{logId} — Append-Only Google Calendar Sync Audit Logs
+    // =========================================================================
+    match /calendarSyncLogs/{logId} {
+      allow get: if isValidId(logId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isVerified() &&
+        isValidId(logId) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().keys().hasAll([
+          'ownerId', 'entityType', 'entityId', 'entityCode', 'action',
+          'status', 'message', 'actorName', 'syncedAt', 'createdAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'ownerId', 'entityType', 'entityId', 'entityCode', 'googleEventId',
+          'action', 'status', 'message', 'actorName', 'syncedAt', 'createdAt'
+        ]) &&
+        isValidCalendarSyncLog(incoming());
+
+      allow update: if false;
+      allow delete: if isVerified() && isValidId(logId) && isAdmin();
+    }
+  }
+}
